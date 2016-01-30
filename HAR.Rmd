@@ -1,0 +1,93 @@
+---
+title: "Human Acitivy Recognition Prediction on Weight Lifting Exercise Dataset"
+output: html_document
+---
+
+## Introduction
+
+The goal of the project is to predict how well each participant performed an exercise. The datasets are available in  http://groupware.les.inf.puc-rio.br/har. The data are gathered from acceloremters on the belt, forearm, arm, and dumbell of 6 male participants whose ages are between 20-28 years. They were asked to perform one set of dumbbell lift(i.e., 10 repetition per set) correctly and incorrectly in 5 different ways as below:
+
+* Class A : exactly according to the specificaton
+
+* Class B : throwing the elbow to the front
+
+* Class C : lifting the dumbbell only halfway
+
+* Class D : lowering the dumbbell only halfway
+
+* Class E : throwing the hips to the front
+
+## Data analysis
+
+load the necessary r packages
+
+```{r, echo = TRUE}
+library(caret); library(randomForest); library(gbm); library(rpart)
+```
+
+Load and clean the datasets; remove columns whose number of NA is more than 10%
+```{r, echo = TRUE}
+#read the data sets
+training <- read.csv("pml-training.csv", header = TRUE, na.strings = c("", "NA", "#DIV/0!"))
+testing <- read.csv("pml-testing.csv", header = TRUE, na.strings = c("", "NA", "#DIV/0!"))
+
+#clean the data sets; remove columns whose majority is NA values
+training <- training[,colSums(is.na(training)) < 0.1*nrow(training)]
+testing <- testing[,colSums(is.na(testing)) < 0.1*nrow(testing)]
+```
+
+Create a validation set from training data set;
+
+30% of the original training data set is validaton set; 70% of the data are used as training set.
+
+```{r, echo=TRUE}
+#Create a subset of training data set for validation. Set seed for reproducibility.
+set.seed(2424)
+valIndex <- createDataPartition(y = training$classe, p = 0.3, list = FALSE)
+valdata <- training[valIndex,]
+training <- training[-valIndex,]
+```
+
+Create 3 statistical learning models from the training set: random forest(rf), generalized boosted regression(gbm), recursive partition(rpart).
+
+"trcontrol" argument is used to perform 5-fold cross validaton to reduce overfitting and out of sampe error.
+
+```{r, echo = TRUE}
+#Create a random forest, gbm(generalized boosted regression modeling), and rpart(recursive partitioning) model
+rfmodel <- train(classe ~ ., data = training[,c(-1)], method = "rf", verbose = FALSE, trControl = trainControl(method = "cv", number = 5))
+gbmmodel <- train(classe ~ ., data = training[,c(-1)], method = "gbm", verbose = FALSE, trControl = trainControl(method = "cv", number = 5))
+rpartmodel <- train(classe ~ ., data = training[,c(-1)], method = "rpart", trControl = trainControl(method = "cv", number = 5))
+```
+
+Evaluate the 3 models by applying it to the validaton set and comparing the prediction with confusion matrix function
+
+```{r, echo = TRUE}
+#Evaluate the models with validation data set
+rfpredCV <- predict(rfmodel, valdata)
+gbmpredCV <- predict(gbmmodel, valdata)
+rpartpredCV <- predict(rpartmodel, valdata)
+
+#accuracy for rf model
+rfacc <- confusionMatrix(valdata$classe, rfpredCV)$overall[1]
+#accuracy for gbm model
+gbmacc <- confusionMatrix(valdata$classe, gbmpredCV)$overall[1]
+#accuracy for rpart model
+rpartacc <- confusionMatrix(valdata$classe, rpartpredCV)$overall[1]
+```
+
+The comparison among the models are shown as below
+
+```{r, echo = TRUE}
+data.frame(model = c("rf","gbm","rpart"), accuracy = c(rfacc,gbmacc,rpartacc))
+```
+
+The model with the highest accuracy, random forest model, is used to apply to the test data set to predict the class of the dumbbell lifting exercise.
+
+```{r, echo = TRUE}
+testPred <- predict(rfmodel, testing)
+testing$pred <- testPred
+```
+
+## Conclusion
+
+Three statistical learning models with 5-fold cross validaton are created and tested on a validaton set to evaluate the accuracy of each model. 5-fold cross validaton is used to reduce the overfitting and out of sample error. The random forest method is selected since it shows higheset accuracy on validation set among the the three models: random forest, generalized boosted regression, and recursive partition. Then the model is applied to the test set to predict performance of 20 activities done by participants.
